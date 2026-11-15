@@ -12,16 +12,6 @@ Um app para aprender idiomas com música que roda só no seu PC. Ele segue as me
 
 Use **Chrome ou Edge**: o modo 🎤 Falar só funciona nesses dois.
 
-## Novidades da versão 2
-
-- **Menu**: a tela inicial mostra suas músicas em cards com capa e o melhor resultado em cada nível (N1–N4). As cores indicam o desempenho: verde é 90% ou mais, amarelo é 70% ou mais, e 👑 marca um 100%. Dá para filtrar entre Todas, Não jogadas, Concluídas e Com ?, e ordenar a lista. Clicar no logo sempre volta para o Menu.
-- **Últimas jogadas**: a barra lateral lista as músicas que você jogou, com o último resultado de cada uma.
-- **📥 Importar playlist do YouTube**: cole o link de uma playlist, ou vários links de vídeos, e o app cria todas as músicas sozinho. Ele tira título e artista do nome do vídeo, busca a letra sincronizada no LRCLIB e a capa no iTunes.
-  - O que não for encontrado aparece com **?** no card. Passe o mouse e clique em **⋯ → Editar informações** para completar. Quando estiver tudo certo, o **?** some.
-  - No editor, o botão **🪄 Preencher automático** refaz a busca de uma música só.
-- **Acompanhamento da letra**: escolha entre ▤ *Por linha*, ▦ *Palavra a palavra* ou ▮ *Letra a letra* (preenchimento estilo karaokê). Se a letra tiver tempos por palavra (`<00:12.30>palavra`, o formato "LRC enhanced"), eles são usados. Se não tiver, o ritmo é estimado pelo tamanho das palavras.
-
-> Atualizando da versão 1: feche a janela preta antiga do servidor antes de abrir o novo `iniciar.bat`. Suas músicas e estatísticas continuam lá, porque ficam no navegador.
 
 ## Novidades da versão 6
 
@@ -82,6 +72,17 @@ Tudo fica na pasta **`dados/`**, dentro da pasta do app:
    - Ou cole um `.lrc` (`[00:12.30] texto`).
    - Ou cole o texto puro e clique em **Salvar e sincronizar ⏱️**. Aí é só dar play e apertar **Espaço** no começo de cada verso.
 4. Se a letra estiver adiantada ou atrasada em relação ao vídeo (clipes costumam ter introdução), ajuste com **−0,25s / +0,25s**. O ajuste fica salvo na música.
+
+## Novidades da versão 2
+
+- **Menu**: a tela inicial mostra suas músicas em cards com capa e o melhor resultado em cada nível (N1–N4). As cores indicam o desempenho: verde é 90% ou mais, amarelo é 70% ou mais, e 👑 marca um 100%. Dá para filtrar entre Todas, Não jogadas, Concluídas e Com ?, e ordenar a lista. Clicar no logo sempre volta para o Menu.
+- **Últimas jogadas**: a barra lateral lista as músicas que você jogou, com o último resultado de cada uma.
+- **📥 Importar playlist do YouTube**: cole o link de uma playlist, ou vários links de vídeos, e o app cria todas as músicas sozinho. Ele tira título e artista do nome do vídeo, busca a letra sincronizada no LRCLIB e a capa no iTunes.
+  - O que não for encontrado aparece com **?** no card. Passe o mouse e clique em **⋯ → Editar informações** para completar. Quando estiver tudo certo, o **?** some.
+  - No editor, o botão **🪄 Preencher automático** refaz a busca de uma música só.
+- **Acompanhamento da letra**: escolha entre ▤ *Por linha*, ▦ *Palavra a palavra* ou ▮ *Letra a letra* (preenchimento estilo karaokê). Se a letra tiver tempos por palavra (`<00:12.30>palavra`, o formato "LRC enhanced"), eles são usados. Se não tiver, o ritmo é estimado pelo tamanho das palavras.
+
+> Atualizando da versão 1: feche a janela preta antiga do servidor antes de abrir o novo `iniciar.bat`. Suas músicas e estatísticas continuam lá, porque ficam no navegador.
 
 ## Modos
 
