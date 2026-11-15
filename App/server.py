@@ -50,6 +50,95 @@ _cache = {}
 _backup_day = None
 
 
+# ---------------------------------------------------------------- log e modo sem janela
+BACKGROUND = sys.stdout is None or os.path.basename(sys.executable).lower().startswith("pythonw")
+
+
+def _setup_log():
+    """Sem janela (pythonw), as mensagens vão para dados/servidor.log."""
+    if not BACKGROUND:
+        return
+    os.makedirs(DATA, exist_ok=True)
+    path = os.path.join(DATA, "servidor.log")
+    try:
+        if os.path.getsize(path) > 1024 * 1024:  # guarda só o último ~1 MB
+            _replace(path, path + ".old") if os.path.exists(path) else None
+    except OSError:
+        pass
+    f = open(path, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = f
+
+
+def log(msg):
+    try:
+        print(time.strftime("%d/%m %H:%M:%S ") + msg, flush=True)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------- encerramento automático
+# Sem janela, o servidor se fecha sozinho quando nenhuma aba do app está aberta.
+_last_ping = time.time()
+_bye_at = None
+IDLE_LIMIT = 10 * 60   # sem nenhum sinal das abas por 10 min -> fecha
+BYE_GRACE = 25         # aba fechada e nenhuma outra respondeu em 25 s -> fecha
+_httpd = None
+
+
+def _ping():
+    global _last_ping, _bye_at
+    _last_ping = time.time()
+    _bye_at = None
+
+
+def _bye():
+    global _bye_at
+    _bye_at = time.time()
+
+
+def _shutdown(reason):
+    log(f"Encerrando o servidor ({reason}).")
+    if _httpd:
+        threading.Thread(target=_httpd.shutdown, daemon=True).start()
+
+
+def _watchdog():
+    global _last_ping
+    prev = time.time()
+    while True:
+        time.sleep(5)
+        now = time.time()
+        if now - prev > 30:      # o PC estava dormindo: não conta esse tempo
+            _last_ping = now
+        prev = now
+        if _bye_at and now - _bye_at > BYE_GRACE and _last_ping < _bye_at:
+            return _shutdown("a aba do app foi fechada")
+        if now - _last_ping > IDLE_LIMIT:
+            return _shutdown("nenhuma aba do app aberta")
+
+
+def _update_ytdlp():
+    """Atualiza o yt-dlp uma vez por semana, em segundo plano (o YouTube muda e ele precisa acompanhar)."""
+    mark = os.path.join(DATA, ".ytdlp-update")
+    try:
+        if os.path.exists(mark) and time.time() - os.path.getmtime(mark) < 7 * 86400:
+            return
+        py = sys.executable
+        if py.lower().endswith("pythonw.exe"):
+            py = py[:-5] + ".exe"   # pip precisa do python.exe
+        flags = 0x08000000 if sys.platform.startswith("win") else 0   # CREATE_NO_WINDOW
+        r = subprocess.run([py, "-m", "pip", "install", "--user", "-U", "-q", "--disable-pip-version-check", "yt-dlp"],
+                           capture_output=True, text=True, timeout=300, creationflags=flags)
+        if r.returncode == 0:
+            os.makedirs(DATA, exist_ok=True)
+            open(mark, "w").close()
+            log("yt-dlp atualizado.")
+        else:
+            log("Não consegui atualizar o yt-dlp: " + (r.stderr or "").strip()[-200:])
+    except Exception as e:
+        log(f"Não consegui atualizar o yt-dlp: {type(e).__name__}: {e}")
+
+
 # ---------------------------------------------------------------- armazenamento em arquivo
 def _replace(src, dst):
     """os.replace com novas tentativas: no Windows o OneDrive/antivírus às vezes trava o arquivo por um instante."""
@@ -277,7 +366,7 @@ def _json_after(text, marker):
 
 
 def _caption_tracks(vid):
-    """Lista de faixas de legenda do vídeo. Tenta a página normal e, se não vier, o cliente Android."""
+    """Faixas de legenda do vídeo: primeiro a página normal (rápida); se não servir, o yt-dlp."""
     found = []
     try:
         html = http_get(f"https://www.youtube.com/watch?v={vid}&hl=en&bpctr=9999999999&has_verified=1")
@@ -287,23 +376,13 @@ def _caption_tracks(vid):
         pass
     if found:
         yield "web", found
-    # se a página não trouxer, tenta outros "clientes" do YouTube (cada um às vezes é liberado em épocas diferentes)
-    clients = [
-        ("android", {"clientName": "ANDROID", "clientVersion": "19.44.38", "androidSdkVersion": 30, "hl": "en"},
-         "com.google.android.youtube/19.44.38 (Linux; U; Android 11) gzip"),
-        ("ios", {"clientName": "IOS", "clientVersion": "19.45.4", "deviceMake": "Apple", "deviceModel": "iPhone16,2",
-                 "osName": "iPhone", "osVersion": "18.1.0.22B83", "hl": "en"},
-         "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)"),
-        ("tv", {"clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "clientVersion": "2.0", "hl": "en"}, UA),
-    ]
-    yield from _client_tracks(vid, clients)
-    # último recurso: yt-dlp (se instalado), que acompanha as mudanças do YouTube
+    # o yt-dlp acompanha as mudanças do YouTube e costuma funcionar quando a página não serve
     try:
         tr = _ytdlp_tracks(vid)
         if tr:
             yield "yt-dlp", tr
     except Exception as e:
-        print(f"[legendas] yt-dlp: {type(e).__name__}: {e}")
+        log(f"[legendas] {vid}: yt-dlp falhou ({type(e).__name__}: {str(e)[:120]})")
 
 
 def _ytdlp_tracks(vid):
@@ -311,7 +390,7 @@ def _ytdlp_tracks(vid):
         import yt_dlp  # noqa
     except ImportError:
         return []
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as y:
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "logger": _QuietLog()}) as y:
         info = y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
     out = []
     for kind, src in (("", info.get("subtitles") or {}), ("asr", info.get("automatic_captions") or {})):
@@ -322,18 +401,11 @@ def _ytdlp_tracks(vid):
     return out
 
 
-def _client_tracks(vid, clients):
-    for origin, client, ua in clients:
-        try:
-            body = json.dumps({"context": {"client": client}, "videoId": vid,
-                               "contentCheckOk": True, "racyCheckOk": True}).encode()
-            d = json.loads(http_get("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", data=body,
-                                    headers={"Content-Type": "application/json", "User-Agent": ua}))
-            tracks = ((d.get("captions") or {}).get("playerCaptionsTracklistRenderer") or {}).get("captionTracks") or []
-            if tracks:
-                yield origin, tracks
-        except Exception as e:
-            print(f"[legendas] {origin}: {type(e).__name__}: {e}")
+class _QuietLog:
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
 
 
 def _parse_json3(d):
@@ -358,22 +430,41 @@ def _parse_json3(d):
     return cues
 
 
-def yt_captions(vid, lang):
+NO_CAPTION_TTL = 3 * 86400  # tenta de novo um vídeo "sem legenda" só depois de 3 dias (ou na hora, pelo 🤖 Auto)
+
+
+def _write_cache(path, obj):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+        _replace(path + ".tmp", path)
+    except OSError:
+        pass
+
+
+def yt_captions(vid, lang, force=False):
     lang = (lang or "en").lower()[:5]
     cache = os.path.join(DATA, "legendas", f"{vid}_{lang}.json")
     if os.path.exists(cache):
         try:
-            return _read_json(cache)
+            c = _read_json(cache)
+            if "cues" in c:
+                return c
+            if not force and time.time() - c.get("at", 0) < NO_CAPTION_TTL:
+                raise ValueError(c.get("error") or "este vídeo não tem legenda disponível")
+        except ValueError:
+            raise
         except Exception:
             pass
-    res = _yt_captions(vid, lang)
     try:
-        os.makedirs(os.path.dirname(cache), exist_ok=True)
-        with open(cache + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(res, f, ensure_ascii=False)
-        _replace(cache + ".tmp", cache)
-    except OSError:
-        pass
+        res = _yt_captions(vid, lang)
+    except ValueError as e:
+        log(f"[legendas] {vid}: sem legenda útil — {e}")
+        _write_cache(cache, {"error": str(e), "at": time.time()})
+        raise
+    log(f"[legendas] {vid}: ok ({res['origin']}, {res['lang']}{', automática' if res['kind'] == 'asr' else ''})")
+    _write_cache(cache, res)
     return res
 
 
@@ -400,6 +491,7 @@ def _yt_captions(vid, lang):
                 return {"kind": "asr" if tr.get("kind") == "asr" else "manual",
                         "lang": tr.get("languageCode"), "origin": origin, "cues": cues}
             errors.append(f"{origin}: legenda vazia")
+    errors = list(dict.fromkeys(errors))
     try:
         import yt_dlp  # noqa
         hint = ""
@@ -460,6 +552,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         parts = [urllib.parse.unquote(x) for x in u.path.split("/")[3:]]
         try:
+            if u.path == "/api/ping":
+                _ping()
+                return self._json({"ok": True, "background": BACKGROUND})
             if u.path == "/api/db/info":
                 return self._json({"path": DATA, "songs": len(load("songs")), "words": len(load("words")),
                                    "history": len(load("history")), "media": len(load_media_index()),
@@ -499,7 +594,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 vid = q.get("id", "")
                 if not re.fullmatch(r"[\w-]{11}", vid):
                     return self._json({"error": "id de vídeo inválido"}, 400)
-                return self._json(yt_captions(vid, q.get("lang", "en")))
+                return self._json(yt_captions(vid, q.get("lang", "en"), q.get("force") == "1"))
             if u.path == "/api/itunes":
                 return self._json(itunes(q.get("term", "")[:200], q.get("country", "BR")[:2]))
             return self._json({"error": "rota desconhecida"}, 404)
@@ -513,6 +608,13 @@ def _route_write(self, method):
         return self._json({"error": "origem não permitida"}, 403)
     parts = [urllib.parse.unquote(x) for x in u.path.split("/")[3:]]
     try:
+        if u.path == "/api/bye" and method == "POST":
+            _bye()
+            return self._json({"ok": True})
+        if u.path == "/api/shutdown" and method == "POST":
+            self._json({"ok": True})
+            _shutdown("pedido pelo app")
+            return
         if u.path == "/api/open-data" and method == "POST":
             open_folder(DATA)
             return self._json({"ok": True})
@@ -600,23 +702,36 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 def main():
-    try:
-        httpd = Server(("127.0.0.1", PORT), Handler)
-    except OSError:
-        print(f"A porta {PORT} já está em uso — o app provavelmente já está aberto.")
-        print("Se você acabou de atualizar o app, feche a janela antiga do servidor e rode de novo.")
-        webbrowser.open(f"http://localhost:{PORT}/")
-        input("Enter para sair…")
-        return
+    global _httpd
+    _setup_log()
     url = f"http://localhost:{PORT}/"
-    print(f"Treino de Letras rodando em {url}")
-    print(f"Seus dados ficam em: {DATA}")
-    print("Deixe esta janela aberta enquanto usa. Ctrl+C para sair.")
+    try:
+        _httpd = Server(("127.0.0.1", PORT), Handler)
+    except OSError:
+        # já tem um servidor rodando: só abre o app no navegador
+        log(f"A porta {PORT} já está em uso — o app já está aberto; abrindo o navegador.")
+        webbrowser.open(url)
+        return
+    log(f"Treino de Letras rodando em {url}")
+    log(f"Seus dados ficam em: {DATA}")
+    try:
+        import yt_dlp  # noqa
+        log("yt-dlp: instalado (usado para ler as legendas do YouTube)")
+    except ImportError:
+        log("yt-dlp: NÃO instalado — menos vídeos vão conseguir alinhar pelas legendas")
+    if BACKGROUND:
+        log("Rodando sem janela. Ele fecha sozinho quando você fecha a aba do app.")
+        threading.Thread(target=_watchdog, daemon=True).start()
+    else:
+        log("Deixe esta janela aberta enquanto usa. Ctrl+C para sair.")
+    threading.Thread(target=_update_ytdlp, daemon=True).start()
     threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
-        httpd.serve_forever()
+        _httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        _httpd.server_close()
 
 
 if __name__ == "__main__":

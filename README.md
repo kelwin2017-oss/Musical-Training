@@ -6,7 +6,9 @@ Um app para aprender idiomas com música que roda só no seu PC. Ele segue as me
 
 1. Precisa ter **Python 3** instalado (no Windows, marque "Add to PATH" na instalação).
 2. Dê dois cliques em **`Musical Training.exe`**, na pasta principal. Ele só abre o `App\iniciar.bat`, e funciona em qualquer pasta e em qualquer PC. No Linux ou Mac, rode `App/iniciar.sh`.
-3. O navegador abre em `http://localhost:8765`. Deixe a janela preta aberta enquanto estiver usando o app.
+3. O navegador abre em `http://localhost:8765`. O servidor do app roda **sem janela** e **fecha sozinho** quando você fecha a aba do app (ou depois de 10 minutos sem nenhuma aba aberta). Também dá para fechar em Configurações → **⏻ Encerrar o app**.
+
+> Para ver as mensagens do servidor (útil quando algo dá errado), elas ficam em `App/dados/servidor.log`. Se preferir a janela preta como antes, rode `App\iniciar.bat --janela`.
 
 **Atalho na Área de Trabalho:** clique com o botão direito no `Musical Training.exe` → *Mostrar mais opções* → *Enviar para* → *Área de trabalho (criar atalho)*. O atalho já vem com o ícone.
 
