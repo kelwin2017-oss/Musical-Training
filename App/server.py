@@ -80,7 +80,7 @@ def log(msg):
 # Sem janela, o servidor se fecha sozinho quando nenhuma aba do app está aberta.
 _last_ping = time.time()
 _bye_at = None
-IDLE_LIMIT = 10 * 60   # sem nenhum sinal das abas por 10 min -> fecha
+IDLE_LIMIT = 30 * 60   # sem nenhum sinal das abas por 30 min -> fecha (abas em segundo plano pingam devagar)
 BYE_GRACE = 25         # aba fechada e nenhuma outra respondeu em 25 s -> fecha
 _httpd = None
 
@@ -549,6 +549,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return super().do_GET()
         if not self._trusted():
             return self._json({"error": "origem não permitida"}, 403)
+        _ping()  # qualquer chamada do app mostra que a aba continua aberta
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         parts = [urllib.parse.unquote(x) for x in u.path.split("/")[3:]]
         try:
@@ -607,6 +608,8 @@ def _route_write(self, method):
     if not self._trusted():
         return self._json({"error": "origem não permitida"}, 403)
     parts = [urllib.parse.unquote(x) for x in u.path.split("/")[3:]]
+    if u.path not in ("/api/bye", "/api/shutdown"):
+        _ping()  # salvar algo também mostra que a aba continua aberta
     try:
         if u.path == "/api/bye" and method == "POST":
             _bye()
