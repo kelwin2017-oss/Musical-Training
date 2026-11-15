@@ -6,7 +6,7 @@ Um app para aprender idiomas com música que roda só no seu PC. Ele segue as me
 
 1. Precisa ter **Python 3** instalado (no Windows, marque "Add to PATH" na instalação).
 2. Dê dois cliques em **`Musical Training.exe`**, na pasta principal. Ele só abre o `App\iniciar.bat`, e funciona em qualquer pasta e em qualquer PC. No Linux ou Mac, rode `App/iniciar.sh`.
-3. O navegador abre em `http://localhost:8765`. O servidor do app roda **sem janela** e **fecha sozinho** quando você fecha a aba do app (ou depois de 10 minutos sem nenhuma aba aberta). Também dá para fechar em Configurações → **⏻ Encerrar o app**.
+3. O navegador abre em `http://localhost:8765`. O servidor do app roda **sem janela** e **fecha sozinho** quando você fecha a aba do app (ou depois de 30 minutos sem nenhuma aba aberta). Também dá para fechar em Configurações → **⏻ Encerrar o app**. Se o servidor fechar com o app aberto, nada se perde: o que você fizer fica guardado no navegador e vai para a pasta `dados/` quando você abrir o `Musical Training.exe` de novo (pode continuar na mesma aba).
 
 > Para ver as mensagens do servidor (útil quando algo dá errado), elas ficam em `App/dados/servidor.log`. Se preferir a janela preta como antes, rode `App\iniciar.bat --janela`.
 
@@ -96,7 +96,7 @@ Tudo fica na pasta **`dados/`**, dentro da pasta do app:
 
 1. Clique em **+ Nova música**.
 2. Escolha a fonte:
-   - **YouTube**: cole o link (pode ser clipe, lyric video ou áudio oficial).
+   - **YouTube**: cole o link (pode ser clipe, lyric video ou áudio oficial). O app preenche título, artista, capa e letra sozinho. Se você trocar o link por outro vídeo, ele limpa tudo e preenche de novo com os dados do novo vídeo.
    - **Arquivo do PC**: mp3, m4a, wav, ogg, mp4, webm… O arquivo é copiado para o banco do navegador.
 3. Escolha a letra:
    - **🔎 Buscar** procura no [LRCLIB](https://lrclib.net), um banco aberto de letras **já sincronizadas**.

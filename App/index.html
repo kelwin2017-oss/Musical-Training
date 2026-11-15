@@ -531,16 +531,63 @@ const IDB = {
   clear(store){ return this.tx(store,"readwrite",s=>{ s.clear(); }); },
 };
 
+/* Gravações que não chegaram ao servidor (ele foi fechado): ficam guardadas no navegador
+   e vão para a pasta dados/ quando o servidor voltar ou na próxima vez que o app abrir. */
+const PENDING = {
+  KEY:"mt-pending-writes",
+  list(){ try{ return JSON.parse(localStorage.getItem(this.KEY)||"[]"); }catch{ return []; } },
+  store(l){ try{ l.length?localStorage.setItem(this.KEY,JSON.stringify(l)):localStorage.removeItem(this.KEY); return true; }catch{ return false; } },
+  add(method,url,body){ const l=this.list().filter(x=>x.url!==url); l.push({method,url,body:body??null}); return this.store(l); },
+  async flush(){
+    let l=this.list(), n=0;
+    while(l.length){
+      const x=l[0]; let r;
+      try{ r=await fetch(x.url,{method:x.method, body:x.body, headers:x.body?{"Content-Type":"application/json"}:undefined}); }
+      catch{ break; } // servidor ainda fora do ar: tenta depois
+      if(!r.ok) console.warn("gravação pendente recusada:", x.method, x.url, r.status); else n++;
+      l.shift(); this.store(l);
+    }
+    return n;
+  },
+};
+/* Aviso de "servidor fechado" (o ping em "Servidor: ping…" mais abaixo tira o aviso quando ele volta). */
+const SRV = { down:false };
+function serverDown(){
+  if(SRV.down||(typeof APP!=="undefined"&&APP.stopped)) return;
+  SRV.down=true;
+  let bar=$("#srvDown");
+  if(!bar){ bar=document.createElement("div"); bar.id="srvDown";
+    bar.style.cssText="position:fixed;left:0;right:0;top:0;z-index:9000;background:var(--near);color:#1a1300;padding:8px 16px;font-size:14px;text-align:center;box-shadow:0 2px 8px #0006";
+    document.body.appendChild(bar); }
+  bar.innerHTML=`⚠️ <b>O servidor do app foi fechado.</b> O que você fizer agora fica guardado neste navegador e vai para a pasta <b>dados</b> assim que o app voltar. Abra o <b>Musical Training.exe</b> de novo (pode continuar nesta aba).`;
+  bar.classList.remove("hide");
+}
+async function serverBack(){
+  if(!SRV.down) return;
+  const n=await PENDING.flush(); if(PENDING.list().length) return; // ainda não conseguiu gravar tudo
+  SRV.down=false; const bar=$("#srvDown"); if(bar) bar.classList.add("hide");
+  toast(n?`✅ Servidor de volta — ${n} alteração(ões) salvas na pasta dados.`:"✅ Servidor de volta.",4000);
+}
+
 /* Armazenamento na pasta dados/ (via server.py). Mesma interface do IndexedDB. */
 const FILEDB = {
   mode:"file", info:null,
   async req(method, url, body, headers){
-    const r=await fetch(url,{method, body, headers});
+    let r;
+    try{ r=await fetch(url,{method, body, headers}); }
+    catch(err){ // sem conexão com o servidor (ele foi fechado)
+      serverDown();
+      if(method!=="GET"&&!url.startsWith("/api/blob")&&PENDING.add(method,url,body)) return {ok:true,pending:true};
+      throw new Error("o servidor do app foi fechado — abra o Musical Training.exe de novo");
+    }
     if(r.status===404&&method==="GET") return undefined;
     if(!r.ok){ let m="HTTP "+r.status; try{ m=(await r.json()).error||m; }catch{} throw new Error("Falha ao salvar na pasta dados: "+m); }
     return r.json();
   },
-  async open(){ const r=await fetch("/api/db/info"); if(!r.ok) throw new Error("sem API"); this.info=await r.json(); if(this.info.path==null) throw new Error("servidor antigo"); },
+  async open(){
+    const r=await fetch("/api/db/info"); if(!r.ok) throw new Error("sem API"); this.info=await r.json(); if(this.info.path==null) throw new Error("servidor antigo");
+    if(PENDING.list().length){ const n=await PENDING.flush(); if(n){ this.info=await (await fetch("/api/db/info")).json(); setTimeout(()=>toast(`✅ ${n} alteração(ões) que ficaram pendentes foram salvas na pasta dados.`,5000),800); } }
+  },
   all(store){ return this.req("GET","/api/db/"+store); },
   async get(store,key){
     if(store==="blobs"){ const r=await fetch("/api/blob/"+encodeURIComponent(key)); if(!r.ok) return undefined; return {id:key, blob:await r.blob()}; }
@@ -1174,7 +1221,7 @@ function openSongEditor(song, opts={}){
   const m=modal(`
     <h2>${isNew?"Nova música":"Editar música"}</h2>
     ${!isNew&&miss.length?`<p class="small" style="color:var(--near);margin:0">? Falta: ${miss.join(", ")}</p>`:""}
-    ${song.ytTitle?`<p class="mut small" style="margin:4px 0 0">Título no YouTube: <i>${esc(song.ytTitle)}</i>${song.ytChannel?` · canal ${esc(song.ytChannel)}`:""}</p>`:""}
+    <p class="mut small" id="eYtInfo" style="margin:4px 0 0"></p>
     <div class="grid2">
       <div><label>Título</label><input type="text" id="eTitle" style="width:100%" placeholder="?" value="${esc(song.title)}"></div>
       <div><label>Artista</label><input type="text" id="eArtist" style="width:100%" placeholder="?" value="${esc(song.artist)}"></div>
@@ -1209,29 +1256,48 @@ function openSongEditor(song, opts={}){
   const setSrc=t=>{ src=t; m.querySelectorAll("#eSrcSeg button").forEach(b=>b.classList.toggle("on",b.dataset.src===t)); $m("#eYt").classList.toggle("hide",t!=="youtube"); $m("#eFile").classList.toggle("hide",t!=="file"); prevCover(); };
   const prevCover=()=>{ const u=$m("#eCover").value.trim(); const id=ytId($m("#eUrl").value); $m("#eCovPrev").style.cssText=u?`background-image:url('${u.replace(/'/g,"%27")}')`:(src==="youtube"&&id?`background-image:url('https://i.ytimg.com/vi/${id}/hqdefault.jpg');background-size:auto 134%`:""); };
   setSrc(src);
-  $m("#eCover").oninput=prevCover; $m("#eUrl").oninput=prevCover;
+  const ytInfo=()=>{ $m("#eYtInfo").innerHTML=song.ytTitle?`Título no YouTube: <i>${esc(song.ytTitle)}</i>${song.ytChannel?` · canal ${esc(song.ytChannel)}`:""}`:""; };
+  ytInfo();
+  $m("#eCover").oninput=prevCover;
   $m("#eSrcSeg").onclick=e=>{ const b=e.target.closest("button"); if(b) setSrc(b.dataset.src); };
   $m("#eFileIn").onchange=e=>{ newFile=e.target.files[0]; if(newFile){ $m("#eFileName").textContent=newFile.name; if(!$m("#eTitle").value){ const g=guessMeta(newFile.name.replace(/\.[^.]+$/,""),""); $m("#eTitle").value=g.title; if(!$m("#eArtist").value&&!g.fromChannel) $m("#eArtist").value=g.artist; } } };
   const info=()=>{ const ls=parseLyrics($m("#eLyrics").value); $m("#eInfo").textContent = ls.length? `${ls.length} linhas · ${isSynced(ls)?"✅ sincronizada":"⏱️ sem tempos (vai precisar sincronizar)"}${ls.some(l=>l.wt)?" · tempos por palavra ✨":""}` : "Sem letra (a música fica com ? no Menu)"; };
   $m("#eLyrics").oninput=info; info();
   $m("#eLrcQ").value=[song.artist,song.title].filter(Boolean).join(" ");
   $m("#eCovBtn").onclick=async()=>{ const b=$m("#eCovBtn"); b.disabled=true; b.textContent="Buscando…"; const c=await findCover($m("#eArtist").value.trim(),$m("#eTitle").value.trim()); b.disabled=false; b.textContent="🔎 Buscar capa"; if(c){ $m("#eCover").value=c; prevCover(); } else toast("Não achei capa no iTunes. Preencha título e artista, ou cole uma URL."); };
-  $m("#eAuto").onclick=async()=>{
-    const id=ytId($m("#eUrl").value); if(!id) return toast("Cole o link do YouTube primeiro");
+  // Vídeo cujos dados estão no formulário. Um link de outro vídeo limpa tudo e preenche de novo.
+  let filledId=song.source.type==="youtube"&&song.source.videoId||null, autoTok=0, urlTimer=null;
+  const resetForVideo=()=>{
+    for(const k of ["#eTitle","#eArtist","#eCover","#eLyrics","#eLrcQ"]) $m(k).value="";
+    $m("#eLrcRes").innerHTML="";
+    Object.assign(song,{ytTitle:"",ytChannel:"",ytDur:0,lrcDur:null,offset:0,offsetAuto:false,offsetOrig:0,linesOrig:null,syncSource:null,syncedBy:null,alignChecked:false,capTried:false});
+    ytInfo(); info(); prevCover();
+  };
+  const autoFill=async id=>{
+    const tok=++autoTok, stale=()=>tok!==autoTok||!m.isConnected;
     const b=$m("#eAuto"); b.disabled=true; b.textContent="Buscando…";
     try{
-      const o=await ytOembed(id);
+      const o=await ytOembed(id); if(stale()) return;
       const meta = o ? guessMeta(o.title, o.author_name) : {title:$m("#eTitle").value.trim(), artist:$m("#eArtist").value.trim()};
-      if(o){ song.ytTitle=o.title; song.ytChannel=o.author_name; }
+      if(o){ song.ytTitle=o.title; song.ytChannel=o.author_name; ytInfo(); }
       if(!$m("#eTitle").value.trim()) $m("#eTitle").value=meta.title||"";
       if(!$m("#eArtist").value.trim()) $m("#eArtist").value=meta.artist||"";
-      const r=await lrclibFind({title:$m("#eTitle").value.trim(), artist:$m("#eArtist").value.trim(), fromChannel:meta.fromChannel, ytTitle:song.ytTitle}, song.ytDur);
+      const r=await lrclibFind({title:$m("#eTitle").value.trim(), artist:$m("#eArtist").value.trim(), fromChannel:meta.fromChannel, ytTitle:song.ytTitle}, song.ytDur); if(stale()) return;
       if(r){ if(!$m("#eLyrics").value.trim()){ $m("#eLyrics").value=r.syncedLyrics||r.plainLyrics||""; song.lrcDur=r.duration; song.alignChecked=false; song.offset=0; } $m("#eTitle").value=r.trackName; $m("#eArtist").value=r.artistName; info(); }
-      if(!$m("#eCover").value.trim()){ const c=await findCover($m("#eArtist").value.trim(),$m("#eTitle").value.trim()); if(c){ $m("#eCover").value=c; prevCover(); } }
+      $m("#eLrcQ").value=[$m("#eArtist").value,$m("#eTitle").value].filter(Boolean).join(" ");
+      if(!$m("#eCover").value.trim()){ const c=await findCover($m("#eArtist").value.trim(),$m("#eTitle").value.trim()); if(stale()) return; if(c){ $m("#eCover").value=c; prevCover(); } }
       toast(r?"Preenchido ✅ Confira os dados.":"Título preenchido, mas não achei a letra — use a busca abaixo.",3500);
-    }catch(err){ toast("Falhou: "+err.message); }
-    b.disabled=false; b.textContent="🪄 Preencher automático";
+    }catch(err){ if(!stale()) toast("Falhou: "+err.message); }
+    finally{ if(tok===autoTok){ b.disabled=false; b.textContent="🪄 Preencher automático"; } }
   };
+  const useLink=()=>{
+    const id=ytId($m("#eUrl").value); if(!id) return false;
+    if(id!==filledId){ resetForVideo(); filledId=id; }
+    autoFill(id); return true;
+  };
+  $m("#eAuto").onclick=()=>{ clearTimeout(urlTimer); if(!useLink()) toast("Cole o link do YouTube primeiro"); };
+  // colou/digitou um link de outro vídeo: limpa e preenche sozinho
+  $m("#eUrl").oninput=()=>{ prevCover(); clearTimeout(urlTimer); urlTimer=setTimeout(()=>{ const id=ytId($m("#eUrl").value); if(id&&id!==filledId&&src==="youtube") useLink(); },500); };
   const doSearch=async()=>{
     const q=$m("#eLrcQ").value.trim() || [$m("#eArtist").value,$m("#eTitle").value].join(" ").trim();
     if(!q) return toast("Digite artista e música");
@@ -2132,26 +2198,31 @@ $("nav").onclick=e=>{ const b=e.target.closest("button"); if(b) showView(b.datas
 
 /* =====================================================================
    Servidor: ping, aba fechada e encerrar
-   O server.py sem janela fecha sozinho se não receber /api/ping por 10 min,
+   O server.py sem janela fecha sozinho se não receber nenhuma chamada por 30 min,
    ou 25 s depois de um /api/bye sem nenhuma outra aba responder.
    ===================================================================== */
 const APP = { alive:false, stopped:false, timer:null,
   chan: ("BroadcastChannel" in window) ? new BroadcastChannel("musical-training") : null };
 async function serverPing(){
   if(!HAS_API||APP.stopped) return;
+  let r;
+  try{ r=await fetch("/api/ping",{cache:"no-store"}); }
+  catch{ if(DB.mode==="file") serverDown(); return; } // servidor fechado
   try{
-    const r=await fetch("/api/ping",{cache:"no-store"}); if(!r.ok) throw 0;
+    if(!r.ok) return; // servidor antigo, sem /api/ping: o botão fica escondido
     const d=await r.json(); if(!APP.alive){ APP.alive=true; showAppCard(d); }
-  }catch{ /* servidor antigo ou fora do ar: o botão fica escondido */ }
+    if(SRV.down) await serverBack();
+  }catch{}
 }
 function showAppCard(d){
   $("#appCard").classList.remove("hide");
   $("#appInfo").innerHTML=d.background
-    ? `O servidor está rodando <b>sem janela</b>. Ele fecha sozinho quando você fecha a aba do app (ou depois de 10 min sem nenhuma aba aberta). Mensagens ficam em <b>dados/servidor.log</b>.`
+    ? `O servidor está rodando <b>sem janela</b>. Ele fecha sozinho quando você fecha a aba do app (ou depois de 30 min sem nenhuma aba aberta). Mensagens ficam em <b>dados/servidor.log</b>.`
     : `O servidor está rodando numa <b>janela</b>. Você pode fechar por aqui ou fechando aquela janela.`;
 }
 if(HAS_API){
   serverPing(); APP.timer=setInterval(serverPing, 60*1000);
+  setInterval(()=>{ if(SRV.down&&document.visibilityState==="visible") serverPing(); }, 5000); // servidor fechado: percebe logo quando ele volta
   document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") serverPing(); });
   addEventListener("pageshow",e=>{ if(e.persisted) serverPing(); });
   addEventListener("pagehide",()=>{
