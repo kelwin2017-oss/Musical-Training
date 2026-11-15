@@ -46,6 +46,13 @@ Ideias fáceis de adicionar:
 - **Exportar a revisão para o Anki**: gere um CSV a partir do store `words`.
 - **Playlist/pastas**: adicione um campo `tags` às músicas e um filtro na barra lateral.
 
+## Novidades da versão 7
+
+- **Fim da música com 3 caminhos**: na tela de resultado, escolha **↻ Refazer**, **⬆ Próximo nível** (mesma música, nível seguinte) ou **⏭ Próxima música**. O botão em destaque é a sugestão: refazer se a precisão ficou abaixo de 80%, avançar se ficou acima.
+- **Cartão "A seguir"**: no canto inferior direito aparece a próxima música, com a capa. Clique nele para abrir e já começar o treino. A ordem é a do Menu (filtro e ordenação de quando você escolheu a música) e pula músicas sem letra sincronizada. O **×** fecha o cartão.
+- **A música continua tocando** depois que a letra acaba. O resultado e o cartão aparecem por cima.
+- **Revisão**: o vídeo do trecho agora ocupa o quadro inteiro (antes aparecia só um pedaço dele).
+
 ## Novidades da versão 6
 
 - **Sincronização pelas legendas do próprio vídeo (método principal)**: muitos clipes têm legenda no YouTube, oficial ou automática, já cronometrada com o vídeo. O app compara as palavras da legenda com as da letra e recalcula o tempo de cada verso — funciona até quando o clipe tem cenas extras no meio da música (ele detecta a mudança de "regime" e compensa).

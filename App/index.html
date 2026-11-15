@@ -135,6 +135,19 @@ main{flex:1;display:flex;min-height:0}
 .sl.playing .tx{color:var(--acc)}
 #syncMedia{width:100%;max-width:480px;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden}
 #syncMedia iframe,#syncMedia video{width:100%;height:100%;border:0}
+#revMedia{position:relative;background:#000}
+#revMedia iframe,#revMedia video{width:100%;height:100%;border:0;display:block}
+#revMedia .audioArt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px;pointer-events:none;opacity:.25}
+#nextPop{position:fixed;right:16px;bottom:16px;z-index:60;width:320px;max-width:calc(100vw - 32px);display:flex;gap:12px;align-items:center;padding:10px 34px 10px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px #000a;cursor:pointer;animation:nextIn .25s ease-out;transition:border-color .12s,transform .12s}
+#nextPop:hover{border-color:var(--acc);transform:translateY(-2px)}
+#nextPop .cov{width:64px;height:64px;flex:none;border-radius:8px;background:var(--panel3) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--mut)}
+#nextPop .txt{min-width:0;flex:1}
+#nextPop .txt b,#nextPop .txt .mut{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nextPop .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--acc)}
+#nextPop .go{font-size:12px;color:var(--ok);margin-top:2px}
+#nextPop .x{position:absolute;top:6px;right:6px;width:24px;height:24px;padding:0;border:0;background:none;color:var(--mut);font-size:16px;line-height:1;cursor:pointer}
+#nextPop .x:hover{color:var(--txt)}
+@keyframes nextIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 
 /* Revisão / Stats / Config */
 .page{flex:1;overflow:auto;padding:24px}
@@ -1013,7 +1026,7 @@ $("#btnImport2").onclick=()=>openImport();
    ===================================================================== */
 let menuFilter="all";
 const songBest=s=>{ const v=[1,2,3,4].map(l=>(s.best||{})[l]).filter(x=>x!=null); return v.length?Math.max(...v):null; };
-function renderMenu(){
+function menuList(){
   const q=$("#menuSearch").value.toLowerCase().trim();
   let list=SONGS.filter(s=>!q||((s.title||"")+" "+(s.artist||"")+" "+(s.ytTitle||"")).toLowerCase().includes(q));
   if(menuFilter==="new") list=list.filter(s=>!s.plays);
@@ -1023,7 +1036,10 @@ function renderMenu(){
   const cmp={recent:(a,b)=>lp(b)-lp(a)||b.created-a.created, added:(a,b)=>b.created-a.created,
     az:(a,b)=>(a.title||"~").localeCompare(b.title||"~"), artist:(a,b)=>(a.artist||"~").localeCompare(b.artist||"~")||(a.title||"").localeCompare(b.title||""),
     best:(a,b)=>(songBest(b)??-1)-(songBest(a)??-1), worst:(a,b)=>(songBest(a)??999)-(songBest(b)??999)}[sort];
-  list.sort(cmp);
+  return list.sort(cmp);
+}
+function renderMenu(){
+  const list=menuList();
   if(!SONGS.length){ $("#grid").innerHTML=`<div class="emptyMenu" style="grid-column:1/-1"><h2>Sua biblioteca está vazia</h2><p>Importe uma playlist inteira do YouTube ou adicione músicas uma a uma.</p><div class="row" style="justify-content:center"><button onclick="openImport()">📥 Importar playlist</button><button class="pri" onclick="openSongEditor(null,{fromMenu:true})">+ Nova música</button></div></div>`; return; }
   if(!list.length){ $("#grid").innerHTML=`<p class="mut" style="grid-column:1/-1">Nada com esse filtro.</p>`; return; }
   $("#grid").innerHTML=list.map(s=>{
@@ -1095,9 +1111,11 @@ async function deleteSong(song){
   renderLibrary(); renderMenu();
 }
 
+let PLAY_ORDER=[];   // ordem usada pelo "Próxima música" (a do Menu quando você escolheu a música)
 async function selectSong(id, opts={}){
-  stopGame(true);
+  stopGame(true); hideNextPop();
   const s=SONGS.find(x=>x.id===id); if(!s) return;
+  if(!opts.keepOrder||!PLAY_ORDER.includes(id)){ PLAY_ORDER=menuList().map(x=>x.id); if(!PLAY_ORDER.includes(id)) PLAY_ORDER=SONGS.map(x=>x.id); }
   if(opts.go!==false) showView("play");
   current=s; renderLibrary();
   $("#stageEmpty").classList.add("hide"); $("#stageMain").classList.remove("hide"); applySplit();
@@ -1596,6 +1614,7 @@ async function autoAlign(s){
 function startGame(){
   if(!current||!player) return;
   if(!isSynced(current.lines)) { toast("Sincronize a letra primeiro (⏱️)"); openSync(); return; }
+  hideNextPop(); const rm=$("#resultModal"); if(rm) rm.remove();
   prepareGame();
   G.started=true; G.startedAt=Date.now(); updateModeUI();
   autoAlign(current);
@@ -1608,7 +1627,12 @@ function startGame(){
 function stopGame(silent){ clearInterval(tickH); tickH=null; if(G){ G.started=false; } if(!silent&&player) player.pause(); $("#btnStart").textContent="▶ Começar"; updateModeUI(); }
 
 function tick(){
-  if(!G||!G.started||G.finished||!player) return;
+  if(!G||!player) return;
+  if(G.finished){ // a letra acabou: a música continua tocando até o fim
+    const t=player.time(), d=player.duration(); if(d) $("#progress i").style.width=(clamp(t/d,0,1)*100)+"%";
+    updateFollow(t-(current.offset||0)); return;
+  }
+  if(!G.started) return;
   const t=player.time(), off=current.offset||0, L=G.lines;
   // linha atual
   let cur=-1; for(let i=0;i<L.length;i++){ if(L[i].t+off<=t+0.05) cur=i; else break; }
@@ -1887,7 +1911,7 @@ function status(msg){ $("#statusMsg").textContent=msg||""; }
 
 async function finishGame(){
   if(!G||G.finished) return;
-  G.finished=true; clearInterval(tickH); player&&player.pause();
+  G.finished=true; // o vídeo continua tocando; o tick só atualiza a barra de progresso
   const done=G.ok+G.near+G.skip;
   const acc= G.mode==="karaoke"||!G.total ? null : Math.round((G.ok+G.near*0.5)/G.total*100);
   const xp= G.mode==="karaoke" ? 5 : G.score;
@@ -1903,6 +1927,12 @@ async function finishGame(){
   await DB.put("songs",current);
   renderLibrary(); renderMenu(); refreshHeader();
   const missedList=[...G.missed.values()].map(m=>m.w);
+  const next=nextSong();
+  const canUp=G.level<4&&(G.mode==="write"||G.mode==="choice");
+  // o botão em destaque é a sugestão: refazer se foi mal, avançar se foi bem
+  const prim = acc!=null&&acc<80 ? "rAgain" : canUp ? "rUp" : next ? "rNext" : "rAgain";
+  const tip = acc==null ? "" : acc<70 ? "Ficou difícil? Refaça para fixar as palavras." : acc<80 ? "Quase lá: mais uma vez e você passa de 80%." : canUp ? `Mandou bem! Que tal o nível ${G.level+1} (${LEVEL_NAME[G.level+1]})?` : next ? "Bora para a próxima?" : "";
+  const btn=(id,txt,title)=>`<button id="${id}"${id===prim?' class="pri"':""}${title?` title="${esc(title)}"`:""}>${txt}</button>`;
   const m=modal(`
     <h2>${acc==null?"Fim! 🎶":acc>=90?"Mandou muito! 🏆":acc>=70?"Muito bom! 🎉":acc>=50?"Bom treino 👍":"Continue praticando 💪"}</h2>
     <div class="grid2" style="margin-top:10px">
@@ -1911,13 +1941,42 @@ async function finishGame(){
     </div>
     <p class="mut">✅ ${G.ok} certas · 🟡 ${G.near} quase · ❌ ${G.skip} puladas/erradas · ${G.err} erros de digitação · ${G.hints} dicas · ${Math.floor(rec.secs/60)}min${String(rec.secs%60).padStart(2,"0")}s</p>
     ${missedList.length?`<h3>Palavras para revisar ${S.autoSrs?`<span class="pill">${added} adicionadas à revisão</span>`:""}</h3><p>${missedList.map(w=>`<span class="pill w" data-w="${esc(w)}" style="font-size:14px;color:var(--txt);margin:2px">${esc(w)}</span>`).join(" ")}</p>`:""}
-    <div class="foot"><button id="rClose">Fechar</button>${S.level<4&&(G.mode==="write"||G.mode==="choice")&&acc>=80?`<button id="rUp">Subir para o nível ${S.level+1}</button>`:""}<button class="pri" id="rAgain">Jogar de novo</button></div>`, true);
+    ${tip?`<p style="margin:12px 0 0">💡 ${tip}</p>`:""}
+    <div class="foot" style="flex-wrap:wrap"><button id="rClose" style="margin-right:auto">Fechar</button>${btn("rAgain","↻ Refazer","Mesma música, mesmo nível")}${canUp?btn("rUp",`⬆ Nível ${G.level+1} · ${LEVEL_NAME[G.level+1]}`,"Mesma música no próximo nível"):""}${next?btn("rNext","⏭ Próxima música",[next.artist,next.title].filter(Boolean).join(" — ")):""}</div>`, true);
+  m.id="resultModal";
   m.querySelector("#rClose").onclick=()=>m.remove();
   m.querySelector("#rAgain").onclick=()=>{ m.remove(); startGame(); };
-  const up=m.querySelector("#rUp"); if(up) up.onclick=()=>{ m.remove(); S.level++; saveS(); syncSegs(); startGame(); };
+  const up=m.querySelector("#rUp"); if(up) up.onclick=()=>{ m.remove(); S.level=G.level+1; saveS(); syncSegs(); startGame(); };
+  const nx=m.querySelector("#rNext"); if(nx) nx.onclick=()=>goNextSong(next);
+  if(next) showNextPop(next);
   m.addEventListener("click",e=>{ const w=e.target.closest("[data-w]"); if(w) showWordPop(w.dataset.w, w); });
   $("#btnStart").textContent="▶ Começar"; if(G) G.started=false; updateModeUI();
 }
+
+/* Próxima música: a seguinte na ordem do Menu (pulando as que ainda não têm letra sincronizada). */
+function nextSong(){
+  if(!current) return null;
+  const order=PLAY_ORDER.includes(current.id)?PLAY_ORDER:SONGS.map(x=>x.id), n=order.length, i=order.indexOf(current.id);
+  for(let k=1;k<n;k++){ const s=SONGS.find(x=>x.id===order[(i+k)%n]); if(s&&s.id!==current.id&&isSynced(s.lines)) return s; }
+  return null;
+}
+async function goNextSong(s){
+  hideNextPop(); const rm=$("#resultModal"); if(rm) rm.remove();
+  if(!s||!SONGS.includes(s)) return;
+  await selectSong(s.id,{keepOrder:true});
+  if(current===s&&player&&isSynced(s.lines)) startGame();
+}
+function showNextPop(s){
+  hideNextPop();
+  const best=songBest(s);
+  const el=document.createElement("div"); el.id="nextPop"; el.title="Ir para a próxima música";
+  el.innerHTML=`<div class="cov" style="${coverStyle(s)}">${coverOf(s)?"":initials(s)}</div>
+    <div class="txt"><div class="lbl">A seguir</div><b>${esc(s.title||"?")}</b><span class="mut small">${esc(s.artist||"")}${best!=null?` · melhor ${best}%`:""}</span><div class="go">▶ Treinar agora</div></div>
+    <button class="x" title="Fechar">×</button>`;
+  el.onclick=e=>{ if(e.target.closest(".x")) return hideNextPop(); goNextSong(s); };
+  document.body.appendChild(el);
+}
+function hideNextPop(){ const el=$("#nextPop"); if(el) el.remove(); }
 
 /* =====================================================================
    Popup de palavra: tradução, definição, pronúncia
@@ -2188,6 +2247,7 @@ function showView(v){
   $("#side").classList.toggle("hide", !(v==="menu"||v==="play"));
   if(v==="menu") renderMenu();
   if(v!=="play"&&player&&player.playing()) player.pause();
+  if(v!=="play") hideNextPop();
   if(v==="review") renderReviewPage();
   if(v==="stats") renderStats();
   if(v==="settings") renderStorageInfo();
