@@ -12,6 +12,31 @@ Um app para aprender idiomas com música que roda só no seu PC. Ele segue as me
 
 Use **Chrome ou Edge**: o modo 🎤 Falar só funciona nesses dois.
 
+## Atalhos
+
+`Esc` pausa · `↑` volta para a linha anterior · `Shift+↑` repete devagar · `↓` dica · `Tab` pula · `Enter` aceita com tolerância · `1–4` escolhem uma opção
+
+## Como funciona por dentro (para você modificar)
+
+Tudo está em um único arquivo, o `index.html` (HTML + CSS + JS, sem build e sem dependências). Ele é dividido em blocos comentados:
+
+| Bloco | Responsabilidade |
+|---|---|
+| `Utilidades` | `tokenize()` separa palavras e pontuação; `norm()` normaliza para comparar; `lev()` calcula a distância de edição |
+| `Banco de dados` | IndexedDB com 4 stores: `songs`, `blobs` (arquivos de mídia), `words` (revisão), `history` |
+| `LRC` | `parseLyrics()` e `toLRC()` |
+| `Helpers de metadados` | `guessMeta()` limpa o título do YouTube (tira "Official Video", "[4K]" etc.) e separa artista e música; `lrclibFind()` escolhe a melhor letra; `findCover()` busca a capa |
+| `Menu` / `Importar` | `renderMenu()`, `openImport()`, `runImport()` (3 buscas em paralelo) |
+| `server.py` | Rotas `/api/playlist`, `/api/oembed` e `/api/itunes`. O navegador sozinho não consegue acessar esses sites por causa de CORS |
+| `Players` | `YTPlayer` (YouTube IFrame API) e `FilePlayer` (`<video>`), com a mesma interface: `play/pause/seek/time/duration/setRate` |
+| `Jogo` | `computeWordTimes()` calcula os tempos de cada palavra; `updateFollow()` faz o destaque; `prepareGame()` sorteia as lacunas; `tick()` roda a cada 50 ms e descobre a linha atual e se precisa pausar; `resolveGap()` cuida da pontuação |
+| `Revisão espaçada` | `srsMiss()`, `srsHit()`, `BOX_DAYS` |
+
+Ideias fáceis de adicionar:
+- **Nível por frequência de palavra**: troque o peso em `prepareGame()` usando uma lista de frequência (ex.: as 5000 palavras mais comuns).
+- **Ranking contra você mesmo**: o `history` já guarda pontos por música e nível.
+- **Exportar a revisão para o Anki**: gere um CSV a partir do store `words`.
+- **Playlist/pastas**: adicione um campo `tags` às músicas e um filtro na barra lateral.
 
 ## Novidades da versão 6
 
@@ -108,31 +133,7 @@ Níveis (Escrever/Escolher): Iniciante 10%, Intermediário 25%, Avançado 50% e 
 - **Estatísticas**: XP, sequência de dias, precisão média, gráfico de 21 dias, palavras que mais te pegam e histórico.
 - **Backup** em JSON (exportar e importar).
 
-## Atalhos
 
-`Esc` pausa · `↑` volta para a linha anterior · `Shift+↑` repete devagar · `↓` dica · `Tab` pula · `Enter` aceita com tolerância · `1–4` escolhem uma opção
-
-## Como funciona por dentro (para você modificar)
-
-Tudo está em um único arquivo, o `index.html` (HTML + CSS + JS, sem build e sem dependências). Ele é dividido em blocos comentados:
-
-| Bloco | Responsabilidade |
-|---|---|
-| `Utilidades` | `tokenize()` separa palavras e pontuação; `norm()` normaliza para comparar; `lev()` calcula a distância de edição |
-| `Banco de dados` | IndexedDB com 4 stores: `songs`, `blobs` (arquivos de mídia), `words` (revisão), `history` |
-| `LRC` | `parseLyrics()` e `toLRC()` |
-| `Helpers de metadados` | `guessMeta()` limpa o título do YouTube (tira "Official Video", "[4K]" etc.) e separa artista e música; `lrclibFind()` escolhe a melhor letra; `findCover()` busca a capa |
-| `Menu` / `Importar` | `renderMenu()`, `openImport()`, `runImport()` (3 buscas em paralelo) |
-| `server.py` | Rotas `/api/playlist`, `/api/oembed` e `/api/itunes`. O navegador sozinho não consegue acessar esses sites por causa de CORS |
-| `Players` | `YTPlayer` (YouTube IFrame API) e `FilePlayer` (`<video>`), com a mesma interface: `play/pause/seek/time/duration/setRate` |
-| `Jogo` | `computeWordTimes()` calcula os tempos de cada palavra; `updateFollow()` faz o destaque; `prepareGame()` sorteia as lacunas; `tick()` roda a cada 50 ms e descobre a linha atual e se precisa pausar; `resolveGap()` cuida da pontuação |
-| `Revisão espaçada` | `srsMiss()`, `srsHit()`, `BOX_DAYS` |
-
-Ideias fáceis de adicionar:
-- **Nível por frequência de palavra**: troque o peso em `prepareGame()` usando uma lista de frequência (ex.: as 5000 palavras mais comuns).
-- **Ranking contra você mesmo**: o `history` já guarda pontos por música e nível.
-- **Exportar a revisão para o Anki**: gere um CSV a partir do store `words`.
-- **Playlist/pastas**: adicione um campo `tags` às músicas e um filtro na barra lateral.
 
 ## Observações
 
