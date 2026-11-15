@@ -1,0 +1,26 @@
+#include <winver.h>
+1 ICON "icon.ico"
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041604B0"
+    BEGIN
+      VALUE "CompanyName", "kelwin2017-oss"
+      VALUE "FileDescription", "Musical Training"
+      VALUE "FileVersion", "1.0.0"
+      VALUE "InternalName", "Musical Training"
+      VALUE "OriginalFilename", "Musical Training.exe"
+      VALUE "ProductName", "Musical Training"
+      VALUE "ProductVersion", "1.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0416, 1200
+  END
+END

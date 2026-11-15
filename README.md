@@ -1,12 +1,16 @@
-# Treino de Letras
+# Musical Training (Treino de Letras)
 
 Um app para aprender idiomas com música que roda só no seu PC. Ele segue as mecânicas do LingoClip/LyricsTraining, não tem limite diário e vem com várias funções extras de estudo.
 
 ## Como abrir
 
 1. Precisa ter **Python 3** instalado (no Windows, marque "Add to PATH" na instalação).
-2. Dê dois cliques em **`iniciar.bat`**. No Linux ou Mac, rode `./iniciar.sh`.
+2. Dê dois cliques em **`Musical Training.exe`**, na pasta principal. Ele só abre o `App\iniciar.bat`, e funciona em qualquer pasta e em qualquer PC. No Linux ou Mac, rode `App/iniciar.sh`.
 3. O navegador abre em `http://localhost:8765`. Deixe a janela preta aberta enquanto estiver usando o app.
+
+**Atalho na Área de Trabalho:** clique com o botão direito no `Musical Training.exe` → *Mostrar mais opções* → *Enviar para* → *Área de trabalho (criar atalho)*. O atalho já vem com o ícone.
+
+**Aviso do Windows na primeira vez:** como o `.exe` não tem assinatura digital paga, o Windows pode mostrar *"O Windows protegeu o computador"*. Clique em **Mais informações → Executar assim mesmo**. O código-fonte do iniciador (cerca de 30 linhas) está em `App/launcher/launcher.c`, e o `build.sh` gera o `.exe` de novo. Se preferir, use o `App\iniciar.bat` direto, que faz a mesma coisa.
 
 > Por que um servidor? O YouTube recusa o player incorporado em páginas abertas com `file://` (é o erro 153). Com o `server.py` o app roda como um site local. Ele escuta só em `127.0.0.1`, então nada fica exposto na sua rede.
 
@@ -23,7 +27,7 @@ Tudo está em um único arquivo, o `index.html` (HTML + CSS + JS, sem build e se
 | Bloco | Responsabilidade |
 |---|---|
 | `Utilidades` | `tokenize()` separa palavras e pontuação; `norm()` normaliza para comparar; `lev()` calcula a distância de edição |
-| `Banco de dados` | IndexedDB com 4 stores: `songs`, `blobs` (arquivos de mídia), `words` (revisão), `history` |
+| `Banco de dados` | Grava na pasta `App/dados/` pelo `server.py` (cai para o IndexedDB do navegador se o servidor não estiver rodando): `songs`, `blobs` (arquivos de mídia), `words` (revisão), `history` |
 | `LRC` | `parseLyrics()` e `toLRC()` |
 | `Helpers de metadados` | `guessMeta()` limpa o título do YouTube (tira "Official Video", "[4K]" etc.) e separa artista e música; `lrclibFind()` escolhe a melhor letra; `findCover()` busca a capa |
 | `Menu` / `Importar` | `renderMenu()`, `openImport()`, `runImport()` (3 buscas em paralelo) |
