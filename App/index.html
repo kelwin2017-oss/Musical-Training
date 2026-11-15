@@ -550,7 +550,7 @@ const PENDING = {
     return n;
   },
 };
-/* Aviso de "servidor fechado" (o ping em "Servidor: ping…" mais abaixo tira o aviso quando ele volta). */
+/* Aviso de "servidor fechado" (a conexão em "Servidor: vive enquanto a aba estiver aberta" tira o aviso quando ele volta). */
 const SRV = { down:false };
 function serverDown(){
   if(SRV.down||(typeof APP!=="undefined"&&APP.stopped)) return;
@@ -2197,44 +2197,37 @@ function showView(v){
 $("nav").onclick=e=>{ const b=e.target.closest("button"); if(b) showView(b.dataset.view); };
 
 /* =====================================================================
-   Servidor: ping, aba fechada e encerrar
-   O server.py sem janela fecha sozinho se não receber nenhuma chamada por 30 min,
-   ou 25 s depois de um /api/bye sem nenhuma outra aba responder.
+   Servidor: vive enquanto a aba estiver aberta
+   Cada aba mantém uma conexão aberta em /api/alive. O server.py sem janela fica de pé
+   enquanto houver uma conexão e encerra uns segundos depois que a última aba (ou o
+   navegador) fecha. Se a conexão cair, o navegador tenta de novo a cada 2 s sozinho.
    ===================================================================== */
-const APP = { alive:false, stopped:false, timer:null,
+const APP = { alive:false, stopped:false, es:null,
   chan: ("BroadcastChannel" in window) ? new BroadcastChannel("musical-training") : null };
-async function serverPing(){
-  if(!HAS_API||APP.stopped) return;
-  let r;
-  try{ r=await fetch("/api/ping",{cache:"no-store"}); }
-  catch{ if(DB.mode==="file") serverDown(); return; } // servidor fechado
-  try{
-    if(!r.ok) return; // servidor antigo, sem /api/ping: o botão fica escondido
-    const d=await r.json(); if(!APP.alive){ APP.alive=true; showAppCard(d); }
-    if(SRV.down) await serverBack();
-  }catch{}
+function connectServer(){
+  if(!HAS_API||APP.stopped||!("EventSource" in window)) return;
+  const es=APP.es=new EventSource("/api/alive");
+  es.onopen=()=>{ if(SRV.down) serverBack(); };
+  es.onmessage=e=>{ try{ const d=JSON.parse(e.data); if(!APP.alive){ APP.alive=true; showAppCard(d); } }catch{} };
+  es.onerror=()=>{
+    if(APP.stopped) return;
+    if(es.readyState===EventSource.CLOSED) return; // servidor antigo, sem /api/alive
+    if(APP.alive&&DB.mode==="file") serverDown();   // caiu: o navegador reconecta sozinho quando ele voltar
+  };
 }
 function showAppCard(d){
   $("#appCard").classList.remove("hide");
   $("#appInfo").innerHTML=d.background
-    ? `O servidor está rodando <b>sem janela</b>. Ele fecha sozinho quando você fecha a aba do app (ou depois de 30 min sem nenhuma aba aberta). Mensagens ficam em <b>dados/servidor.log</b>.`
+    ? `O servidor está rodando <b>sem janela</b> e fica aberto enquanto esta aba estiver aberta. Ao fechar a aba (ou o navegador), ele encerra sozinho. Mensagens ficam em <b>dados/servidor.log</b>.`
     : `O servidor está rodando numa <b>janela</b>. Você pode fechar por aqui ou fechando aquela janela.`;
 }
 if(HAS_API){
-  serverPing(); APP.timer=setInterval(serverPing, 60*1000);
-  setInterval(()=>{ if(SRV.down&&document.visibilityState==="visible") serverPing(); }, 5000); // servidor fechado: percebe logo quando ele volta
-  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") serverPing(); });
-  addEventListener("pageshow",e=>{ if(e.persisted) serverPing(); });
-  addEventListener("pagehide",()=>{
-    if(APP.stopped) return;
-    try{ navigator.sendBeacon("/api/bye"); }catch{}
-    try{ APP.chan&&APP.chan.postMessage("bye"); }catch{}
-  });
-  // outra aba do app foi fechada: avisa na hora que esta continua aberta
-  if(APP.chan) APP.chan.onmessage=e=>{ if(e.data==="bye") serverPing(); else if(e.data==="stopped") appStopped(); };
+  connectServer();
+  addEventListener("pageshow",e=>{ if(e.persisted&&(!APP.es||APP.es.readyState===EventSource.CLOSED)) connectServer(); });
+  if(APP.chan) APP.chan.onmessage=e=>{ if(e.data==="stopped") appStopped(); };
 }
 function appStopped(){
-  APP.stopped=true; clearInterval(APP.timer);
+  APP.stopped=true; try{ APP.es&&APP.es.close(); }catch{}
   try{ player&&player.playing()&&player.pause(); }catch{}
   const o=document.createElement("div");
   o.style.cssText="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg,#111);color:var(--txt);text-align:center;padding:16px";
