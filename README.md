@@ -40,11 +40,6 @@ Tudo está em um único arquivo, o `index.html` (HTML + CSS + JS, sem build e se
 | `Jogo` | `computeWordTimes()` calcula os tempos de cada palavra; `updateFollow()` faz o destaque; `prepareGame()` sorteia as lacunas; `tick()` roda a cada 50 ms e descobre a linha atual e se precisa pausar; `resolveGap()` cuida da pontuação |
 | `Revisão espaçada` | `srsMiss()`, `srsHit()`, `BOX_DAYS` |
 
-Ideias fáceis de adicionar:
-- **Nível por frequência de palavra**: troque o peso em `prepareGame()` usando uma lista de frequência (ex.: as 5000 palavras mais comuns).
-- **Ranking contra você mesmo**: o `history` já guarda pontos por música e nível.
-- **Exportar a revisão para o Anki**: gere um CSV a partir do store `words`.
-- **Playlist/pastas**: adicione um campo `tags` às músicas e um filtro na barra lateral.
 
 ## Novidades da versão 6
 
@@ -81,12 +76,6 @@ Tudo fica na pasta **`dados/`**, dentro da pasta do app:
 | `midia/` | Cópias dos arquivos de áudio e vídeo que você escolheu do PC |
 | `backups/AAAA-MM-DD/` | Cópia automática diária dos `.json`. Fica guardada por 14 dias |
 
-- Limpar os dados do navegador ou trocar de navegador não apaga mais nada.
-- Para levar tudo para outro PC, ou fazer backup no OneDrive, **copie a pasta inteira do app**.
-- Ao **atualizar o app**, troque só o `index.html` e o `server.py`, e mantenha a pasta `dados/`.
-- Para voltar ao estado de um dia anterior: feche o servidor, copie os `.json` de `dados/backups/<dia>/` para `dados/` e abra o app de novo.
-- Na primeira vez que esta versão abre, o app copia sozinho para a pasta o que estava salvo no navegador. A cópia antiga continua no navegador, mas não é mais usada.
-- Se o app for aberto sem o servidor (duplo-clique no `index.html`), ele volta a salvar só no navegador. Configurações → "Onde ficam seus dados" avisa quando isso acontece.
 
 ## Novidades da versão 3
 
