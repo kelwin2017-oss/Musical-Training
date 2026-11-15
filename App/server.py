@@ -24,6 +24,7 @@ import http.server
 import json
 import os
 import re
+import select
 import shutil
 import socketserver
 import subprocess
@@ -77,23 +78,31 @@ def log(msg):
 
 
 # ---------------------------------------------------------------- encerramento automático
-# Sem janela, o servidor se fecha sozinho quando nenhuma aba do app está aberta.
-_last_ping = time.time()
-_bye_at = None
-IDLE_LIMIT = 30 * 60   # sem nenhum sinal das abas por 30 min -> fecha (abas em segundo plano pingam devagar)
-BYE_GRACE = 25         # aba fechada e nenhuma outra respondeu em 25 s -> fecha
+# Sem janela, o servidor vive enquanto houver uma aba do app aberta. Cada aba mantém uma
+# conexão aberta em /api/alive; quando a última fecha (aba ou navegador fechado), ele encerra.
+TAB_GRACE = 15       # última aba fechou: espera 15 s (dá tempo de recarregar a página) e encerra
+STARTUP_WAIT = 120   # ao abrir: espera até 2 min pela primeira aba
+_tabs = 0
+_tabs_ever = False
+_empty_since = time.time()
+_tabs_lock = threading.Lock()
 _httpd = None
 
 
-def _ping():
-    global _last_ping, _bye_at
-    _last_ping = time.time()
-    _bye_at = None
+def _tab_open():
+    global _tabs, _tabs_ever
+    with _tabs_lock:
+        _tabs += 1
+        _tabs_ever = True
 
 
-def _bye():
-    global _bye_at
-    _bye_at = time.time()
+def _tab_closed():
+    global _tabs, _empty_since
+    with _tabs_lock:
+        _tabs -= 1
+        if _tabs <= 0:
+            _tabs = 0
+            _empty_since = time.time()
 
 
 def _shutdown(reason):
@@ -103,18 +112,18 @@ def _shutdown(reason):
 
 
 def _watchdog():
-    global _last_ping
+    global _empty_since
     prev = time.time()
     while True:
-        time.sleep(5)
+        time.sleep(2)
         now = time.time()
-        if now - prev > 30:      # o PC estava dormindo: não conta esse tempo
-            _last_ping = now
+        if now - prev > 30:      # o PC estava dormindo: dá tempo para a aba reconectar
+            _empty_since = now
         prev = now
-        if _bye_at and now - _bye_at > BYE_GRACE and _last_ping < _bye_at:
-            return _shutdown("a aba do app foi fechada")
-        if now - _last_ping > IDLE_LIMIT:
-            return _shutdown("nenhuma aba do app aberta")
+        if _tabs > 0:
+            continue
+        if now - _empty_since > (TAB_GRACE if _tabs_ever else STARTUP_WAIT):
+            return _shutdown("a aba do app foi fechada" if _tabs_ever else "nenhuma aba do app abriu")
 
 
 def _update_ytdlp():
@@ -541,6 +550,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _alive(self):
+        """Conexão aberta enquanto a aba existir (Server-Sent Events). Quando a aba ou o
+        navegador fecha, a conexão cai e o servidor fica sabendo na hora."""
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        sock = self.connection
+        _tab_open()
+        try:
+            self.wfile.write(("retry: 2000\ndata: " + json.dumps({"background": BACKGROUND}) + "\n\n").encode())
+            self.wfile.flush()
+            while True:
+                ready, _, _ = select.select([sock], [], [], 15)
+                if ready:
+                    if not sock.recv(1024):   # a aba fechou a conexão
+                        break
+                else:                         # mantém a conexão viva
+                    self.wfile.write(b": ok\n\n")
+                    self.wfile.flush()
+        except (OSError, ValueError):
+            pass
+        finally:
+            _tab_closed()
+
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         if u.path.lower().startswith("/dados"):  # os dados só saem pela API
@@ -549,12 +583,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return super().do_GET()
         if not self._trusted():
             return self._json({"error": "origem não permitida"}, 403)
-        _ping()  # qualquer chamada do app mostra que a aba continua aberta
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         parts = [urllib.parse.unquote(x) for x in u.path.split("/")[3:]]
         try:
+            if u.path == "/api/alive":
+                return self._alive()
             if u.path == "/api/ping":
-                _ping()
                 return self._json({"ok": True, "background": BACKGROUND})
             if u.path == "/api/db/info":
                 return self._json({"path": DATA, "songs": len(load("songs")), "words": len(load("words")),
@@ -608,11 +642,8 @@ def _route_write(self, method):
     if not self._trusted():
         return self._json({"error": "origem não permitida"}, 403)
     parts = [urllib.parse.unquote(x) for x in u.path.split("/")[3:]]
-    if u.path not in ("/api/bye", "/api/shutdown"):
-        _ping()  # salvar algo também mostra que a aba continua aberta
     try:
-        if u.path == "/api/bye" and method == "POST":
-            _bye()
+        if u.path == "/api/bye" and method == "POST":  # usado por versões antigas do index.html
             return self._json({"ok": True})
         if u.path == "/api/shutdown" and method == "POST":
             self._json({"ok": True})

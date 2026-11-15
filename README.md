@@ -6,7 +6,9 @@ Um app para aprender idiomas com música que roda só no seu PC. Ele segue as me
 
 1. Precisa ter **Python 3** instalado (no Windows, marque "Add to PATH" na instalação).
 2. Dê dois cliques em **`Musical Training.exe`**, na pasta principal. Ele só abre o `App\iniciar.bat`, e funciona em qualquer pasta e em qualquer PC. No Linux ou Mac, rode `App/iniciar.sh`.
-3. O navegador abre em `http://localhost:8765`. O servidor do app roda **sem janela** e **fecha sozinho** quando você fecha a aba do app (ou depois de 30 minutos sem nenhuma aba aberta). Também dá para fechar em Configurações → **⏻ Encerrar o app**. Se o servidor fechar com o app aberto, nada se perde: o que você fizer fica guardado no navegador e vai para a pasta `dados/` quando você abrir o `Musical Training.exe` de novo (pode continuar na mesma aba).
+3. O navegador abre em `http://localhost:8765`. O servidor do app roda **sem janela** e fica aberto **enquanto a aba do app estiver aberta** (não importa quanto tempo, nem se a aba está em segundo plano). Quando você fecha a aba, ou o navegador inteiro, ele se encerra sozinho em uns 15 segundos. Recarregar a página (F5) não fecha o app. Também dá para fechar em Configurações → **⏻ Encerrar o app**. Se o servidor fechar com o app aberto, nada se perde: o que você fizer fica guardado no navegador e vai para a pasta `dados/` quando você abrir o `Musical Training.exe` de novo (pode continuar na mesma aba).
+
+> **Abas que "dormem":** o Chrome (*Economia de memória*) e o Edge (*Guias em suspensão*) podem descarregar abas paradas há muito tempo, e isso conta como fechar a aba. Para evitar, adicione `localhost:8765` em Chrome → Configurações → Desempenho → *Sempre manter estes sites ativos*, ou em Edge → Configurações → Sistema e desempenho → *Nunca colocar estes sites em suspensão*.
 
 > Para ver as mensagens do servidor (útil quando algo dá errado), elas ficam em `App/dados/servidor.log`. Se preferir a janela preta como antes, rode `App\iniciar.bat --janela`.
 
