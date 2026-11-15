@@ -443,6 +443,11 @@ body.dragging #leftCol{transition:none}
         <div id="storageInfo" class="small" style="margin-bottom:10px"></div>
         <div class="row"><button id="btnOpenData" class="hide">📂 Abrir pasta dados</button><button id="btnExport">⬇ Exportar backup</button><button id="btnImport">⬆ Importar backup</button><input type="file" id="importFile" accept=".json" class="hide"></div>
       </div>
+      <div class="card hide" id="appCard">
+        <h3>Servidor do app</h3>
+        <div id="appInfo" class="small" style="margin-bottom:10px"></div>
+        <div class="row"><button id="btnShutdown">⏻ Encerrar o app</button></div>
+      </div>
       <div class="card">
         <h3>Zona de perigo</h3>
         <div class="row"><button id="btnResetStats">Zerar estatísticas</button><button id="btnResetWords">Zerar revisão</button></div>
@@ -2124,6 +2129,55 @@ function showView(v){
   if(v!=="review"&&revPlayer){ revPlayer.destroy(); revPlayer=null; }
 }
 $("nav").onclick=e=>{ const b=e.target.closest("button"); if(b) showView(b.dataset.view); };
+
+/* =====================================================================
+   Servidor: ping, aba fechada e encerrar
+   O server.py sem janela fecha sozinho se não receber /api/ping por 10 min,
+   ou 25 s depois de um /api/bye sem nenhuma outra aba responder.
+   ===================================================================== */
+const APP = { alive:false, stopped:false, timer:null,
+  chan: ("BroadcastChannel" in window) ? new BroadcastChannel("musical-training") : null };
+async function serverPing(){
+  if(!HAS_API||APP.stopped) return;
+  try{
+    const r=await fetch("/api/ping",{cache:"no-store"}); if(!r.ok) throw 0;
+    const d=await r.json(); if(!APP.alive){ APP.alive=true; showAppCard(d); }
+  }catch{ /* servidor antigo ou fora do ar: o botão fica escondido */ }
+}
+function showAppCard(d){
+  $("#appCard").classList.remove("hide");
+  $("#appInfo").innerHTML=d.background
+    ? `O servidor está rodando <b>sem janela</b>. Ele fecha sozinho quando você fecha a aba do app (ou depois de 10 min sem nenhuma aba aberta). Mensagens ficam em <b>dados/servidor.log</b>.`
+    : `O servidor está rodando numa <b>janela</b>. Você pode fechar por aqui ou fechando aquela janela.`;
+}
+if(HAS_API){
+  serverPing(); APP.timer=setInterval(serverPing, 60*1000);
+  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") serverPing(); });
+  addEventListener("pageshow",e=>{ if(e.persisted) serverPing(); });
+  addEventListener("pagehide",()=>{
+    if(APP.stopped) return;
+    try{ navigator.sendBeacon("/api/bye"); }catch{}
+    try{ APP.chan&&APP.chan.postMessage("bye"); }catch{}
+  });
+  // outra aba do app foi fechada: avisa na hora que esta continua aberta
+  if(APP.chan) APP.chan.onmessage=e=>{ if(e.data==="bye") serverPing(); else if(e.data==="stopped") appStopped(); };
+}
+function appStopped(){
+  APP.stopped=true; clearInterval(APP.timer);
+  try{ player&&player.playing()&&player.pause(); }catch{}
+  const o=document.createElement("div");
+  o.style.cssText="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg,#111);color:var(--txt);text-align:center;padding:16px";
+  o.innerHTML=`<div><h2 style="margin:0 0 8px">⏻ O app foi encerrado</h2><p class="mut" style="margin:0">Pode fechar esta aba. Para abrir de novo, use o <b>Musical Training.exe</b>.</p></div>`;
+  document.body.appendChild(o);
+}
+$("#btnShutdown").onclick=async()=>{
+  if(!confirm("Encerrar o app? O servidor fecha e esta aba deixa de funcionar até você abrir o app de novo.")) return;
+  try{
+    const r=await fetch("/api/shutdown",{method:"POST"}); if(!r.ok) throw 0;
+    try{ APP.chan&&APP.chan.postMessage("stopped"); }catch{}
+    appStopped();
+  }catch{ toast("Não consegui encerrar o servidor"); }
+};
 $("#logo").onclick=()=>showView("menu");
 
 /* =====================================================================
